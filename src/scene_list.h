@@ -1,6 +1,6 @@
 /***********************************************************************
  *
- * Copyright (C) 2012 Graeme Gott <graeme@gottcode.org>
+ * Copyright (C) 2012, 2024 Graeme Gott <graeme@gottcode.org>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@ class Document;
 
 #include <QFrame>
 class QLineEdit;
-class QListView;
+class QTreeView;
 class QModelIndex;
 class QSortFilterProxyModel;
 class QToolButton;
@@ -52,8 +52,6 @@ protected:
 	void resizeEvent(QResizeEvent* event);
 
 private slots:
-	void moveScenesDown();
-	void moveScenesUp();
 	void sceneSelected(const QModelIndex& index);
 	void selectCurrentScene();
 	void setFilter(const QString& filter);
@@ -61,12 +59,9 @@ private slots:
 	void updateShortcuts();
 
 private:
-	void moveSelectedScenes(int movement);
-
-private:
 	QAction* m_toggle_action;
 	QToolButton* m_show_button;
-	QListView* m_scenes;
+	QTreeView* m_scenes;
 	QLineEdit* m_filter;
 	QToolButton* m_hide_button;
 	QFrame* m_resizer;

@@ -362,18 +362,11 @@ void Preferences::setTypewriterSounds(bool sounds)
 
 //-----------------------------------------------------------------------------
 
-QString Preferences::sceneDivider() const
-{
-	return m_scene_divider;
-}
+
 
 //-----------------------------------------------------------------------------
 
-void Preferences::setSceneDivider(const QString& divider)
-{
-	setValue(m_scene_divider, divider);
-	SceneModel::setSceneDivider(m_scene_divider);
-}
+
 
 //-----------------------------------------------------------------------------
 
@@ -585,8 +578,7 @@ void Preferences::reload()
 	m_single_quotes = settings.value("Edit/SmartSingleQuotes", -1).toInt();
 	m_typewriter_sounds = settings.value("Edit/TypewriterSounds", false).toBool();
 
-	m_scene_divider = settings.value("SceneList/Divider", QLatin1String("##")).toString();
-	SceneModel::setSceneDivider(m_scene_divider);
+	
 
 	m_save_positions = settings.value("Save/RememberPositions", true).toBool();
 	m_write_bom = settings.value("Save/WriteBOM", true).toBool();
@@ -643,7 +635,7 @@ void Preferences::write()
 	settings.setValue("Edit/SmartSingleQuotes", m_single_quotes);
 	settings.setValue("Edit/TypewriterSounds", m_typewriter_sounds);
 
-	settings.setValue("SceneList/Divider", m_scene_divider);
+	
 
 	settings.setValue("Save/RememberPositions", m_save_positions);
 	settings.setValue("Save/WriteBOM", m_write_bom);

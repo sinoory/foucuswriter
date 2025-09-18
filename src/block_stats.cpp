@@ -1,47 +1,34 @@
 /***********************************************************************
- *
- * Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2017 Graeme Gott <graeme@gottcode.org>
- *
+ * 
+ * Copyright (C) 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2017, 2024 Graeme Gott <graeme@gottcode.org>
+ * 
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
+ * 
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * 
  ***********************************************************************/
 
 #include "block_stats.h"
 
 #include "dictionary_ref.h"
-#include "scene_model.h"
 
 //-----------------------------------------------------------------------------
 
-BlockStats::BlockStats(SceneModel* scene_model) :
+BlockStats::BlockStats() :
 	m_characters(0),
 	m_letters(0),
 	m_spaces(0),
-	m_words(0),
-	m_scene(false),
-	m_scene_model(scene_model)
+	m_words(0)
 {
-}
-
-//-----------------------------------------------------------------------------
-
-BlockStats::~BlockStats()
-{
-	if (m_scene) {
-		Q_ASSERT(m_scene_model != 0);
-		m_scene_model->removeScene(this);
-	}
 }
 
 //-----------------------------------------------------------------------------

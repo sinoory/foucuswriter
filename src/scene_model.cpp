@@ -1,6 +1,6 @@
 /***********************************************************************
  *
- * Copyright (C) 2012, 2013, 2014, 2015, 2018, 2019 Graeme Gott <graeme@gottcode.org>
+ * Copyright (C) 2012, 2024 Graeme Gott <graeme@gottcode.org>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,576 +19,257 @@
 
 #include "scene_model.h"
 
-#include "block_stats.h"
-
-#include <QMimeData>
 #include <QTextBlock>
 #include <QTextCursor>
-#include <QTextDocumentFragment>
 #include <QTextEdit>
-
-#include <algorithm>
+#include <QTimer>
 
 //-----------------------------------------------------------------------------
+// OutlineItem
+//-----------------------------------------------------------------------------
 
-static QString f_scene_divider = QLatin1String("##");
-static QList<SceneModel*> f_scene_models;
+OutlineItem::OutlineItem(OutlineItem *parent)
+    : m_parentItem(parent)
+{
+}
 
+OutlineItem::~OutlineItem()
+{
+    qDeleteAll(m_childItems);
+}
+
+void OutlineItem::appendChild(OutlineItem *item)
+{
+    m_childItems.append(item);
+}
+
+OutlineItem *OutlineItem::child(int row)
+{
+    if (row < 0 || row >= m_childItems.size())
+        return nullptr;
+    return m_childItems.at(row);
+}
+
+int OutlineItem::childCount() const
+{
+    return m_childItems.count();
+}
+
+int OutlineItem::row() const
+{
+    if (m_parentItem)
+        return m_parentItem->m_childItems.indexOf(const_cast<OutlineItem*>(this));
+
+    return 0;
+}
+
+OutlineItem *OutlineItem::parentItem()
+{
+    return m_parentItem;
+}
+
+//-----------------------------------------------------------------------------
+// SceneModel
 //-----------------------------------------------------------------------------
 
 SceneModel::SceneModel(QTextEdit* document, QObject* parent) :
-	QAbstractListModel(parent),
+	QAbstractItemModel(parent),
 	m_document(document),
-	m_updates(0)
+    m_updatesBlocked(false)
 {
-	connect(m_document->document(), &QTextDocument::blockCountChanged, this, &SceneModel::invalidateScenes);
-
-	f_scene_models.append(this);
+    m_rootItem = new OutlineItem(nullptr);
+	connect(m_document->document(), &QTextDocument::contentsChanged, this, &SceneModel::scheduleRebuild);
+    rebuildOutline();
 }
-
-//-----------------------------------------------------------------------------
 
 SceneModel::~SceneModel()
 {
-	f_scene_models.removeAll(this);
+    delete m_rootItem;
 }
 
-//-----------------------------------------------------------------------------
-
-QModelIndex SceneModel::findScene(const QTextCursor& cursor) const
+int SceneModel::columnCount(const QModelIndex &parent) const
 {
-	// Find block stats for text cursor
-	BlockStats* stats = 0;
-	QTextBlock block = cursor.block();
-	while (block.isValid()) {
-		stats = static_cast<BlockStats*>(block.userData());
-		if (stats && stats->isScene()) {
-			break;
-		}
-		stats = 0;
-		block = block.previous();
-	}
-	if (!stats) {
-		return QModelIndex();
-	}
-
-	// Find block stats in scene list
-	int pos = findSceneByStats(stats);
-	return (pos != -1) ? index(pos) : QModelIndex();
+    Q_UNUSED(parent);
+    return 1;
 }
 
-//-----------------------------------------------------------------------------
-
-void SceneModel::moveScenes(QList<int> scenes, int row)
+QVariant SceneModel::data(const QModelIndex &index, int role) const
 {
-	// Make sure scenes are ordered correctly
-	if (scenes.isEmpty()) {
-		return;
-	}
-	std::sort(scenes.begin(), scenes.end());
+    if (!index.isValid())
+        return QVariant();
 
-	// Copy text fragments of scenes
-	QTextCursor cursor = m_document->textCursor();
-	QList<QTextDocumentFragment> fragments;
-	for (int scene : scenes) {
-		selectScene(m_scenes.at(scene), cursor);
-		fragments += cursor.selection();
-	}
+    if (role != Qt::DisplayRole && role != Qt::UserRole)
+        return QVariant();
 
-	// Find location in document to insert text fragments
-	int position = 0;
-	if ((row < m_scenes.size()) && (row > -1)) {
-		const Scene& scene = m_scenes.at(row);
-		QTextBlock block = m_document->document()->findBlockByNumber(scene.block_number);
-		if (block.userData() == scene.stats) {
-			position = block.position();
-		} else {
-			block = m_document->document()->begin();
-			while (block.isValid()) {
-				position = block.position();
-				if (block.userData() == scene.stats) {
-					break;
-				}
-				block = block.next();
-			}
-		}
-	} else {
-		cursor.movePosition(QTextCursor::End);
-		if (cursor.block().text().length()) {
-			cursor.insertBlock();
-		}
-		position = cursor.position();
-	}
+    OutlineItem *item = static_cast<OutlineItem*>(index.internalPointer());
 
-	// Start edit block by moving to start of dragged scenes
-	cursor = m_document->textCursor();
-	cursor.beginEditBlock();
-	cursor.setPosition(position);
+    if (role == Qt::UserRole) {
+        return item->block_number;
+    }
 
-	// Make sure inserted text begins with divider
-	if (!fragments.first().toPlainText().startsWith(f_scene_divider)) {
-		cursor.insertText(f_scene_divider + "\n");
-	}
-
-	// Insert text fragments; will indirectly create scenes
-	for (const QTextDocumentFragment& fragment : fragments) {
-		cursor.insertFragment(fragment);
-		if (!cursor.atBlockStart()) {
-			cursor.insertBlock();
-		}
-	}
-
-	// Make sure inserted text ends with divider
-	if (!cursor.atEnd() && !cursor.block().text().startsWith(f_scene_divider)) {
-		cursor.insertText(f_scene_divider + "\n");
-	}
-
-	// Delete original fragments; will indirectly delete scenes
-	int delta = 0;
-	for (int i = scenes.count() - 1; i >= 0; --i) {
-		selectScene(m_scenes.at(scenes.at(i)), cursor);
-		delta += cursor.position();
-		cursor.removeSelectedText();
-		delta -= cursor.position();
-	}
-
-	// End edit block by moving to start of dropped scenes
-	if (row > scenes.first()) {
-		position -= delta;
-	}
-	cursor.setPosition(position);
-	cursor.endEditBlock();
-	m_document->setTextCursor(cursor);
+    return item->text;
 }
 
-//-----------------------------------------------------------------------------
-
-void SceneModel::removeScene(BlockStats* stats)
+Qt::ItemFlags SceneModel::flags(const QModelIndex &index) const
 {
-	// Find scene containing stats
-	int pos = findSceneByStats(stats);
-	if (pos == -1) {
-		return;
-	}
+    if (!index.isValid())
+        return Qt::NoItemFlags;
 
-	// Remove scene
-	beginRemoveRows(QModelIndex(), pos, pos);
-	m_scenes.removeAt(pos);
-	endRemoveRows();
-
-	// Make sure to update values
-	invalidateScenes();
+    return QAbstractItemModel::flags(index);
 }
 
-//-----------------------------------------------------------------------------
-
-void SceneModel::removeAllScenes()
+QVariant SceneModel::headerData(int section, Qt::Orientation orientation,
+                               int role) const
 {
-	if (m_scenes.isEmpty()) {
-		return;
-	}
-
-	beginRemoveRows(QModelIndex(), 0, m_scenes.count() - 1);
-	m_scenes.clear();
-	endRemoveRows();
+    Q_UNUSED(section);
+    Q_UNUSED(orientation);
+    Q_UNUSED(role);
+    return QVariant();
 }
 
-//-----------------------------------------------------------------------------
-
-void SceneModel::updateScene(BlockStats* stats, const QTextBlock& block)
+QModelIndex SceneModel::index(int row, int column, const QModelIndex &parent) const
 {
-	// Flag scenes out-of-date
-	if (m_updates < 1) {
-		m_updates = -1;
-		return;
-	}
+    if (!hasIndex(row, column, parent))
+        return QModelIndex();
 
-	QString text = block.text();
-	bool was_scene = stats->isScene();
-	bool is_scene = !f_scene_divider.isEmpty() && text.startsWith(f_scene_divider);
-	stats->setScene(is_scene || (block.blockNumber() == 0));
-	if (stats->isScene()) {
-		// Add or update scene divider block
-		text = is_scene ? text.mid(f_scene_divider.length()).trimmed() : text;
-		if (was_scene) {
-			updateScene(stats, text);
-		} else {
-			addScene(stats, block, text);
-		}
-	} else if (was_scene) {
-		removeScene(stats);
-	} else {
-		updateScene(block);
-	}
+    OutlineItem *parentItem;
+
+    if (!parent.isValid())
+        parentItem = m_rootItem;
+    else
+        parentItem = static_cast<OutlineItem*>(parent.internalPointer());
+
+    OutlineItem *childItem = parentItem->child(row);
+    if (childItem)
+        return createIndex(row, column, childItem);
+    return QModelIndex();
 }
 
-//-----------------------------------------------------------------------------
+QModelIndex SceneModel::parent(const QModelIndex &index) const
+{
+    if (!index.isValid())
+        return QModelIndex();
+
+    OutlineItem *childItem = static_cast<OutlineItem*>(index.internalPointer());
+    OutlineItem *parentItem = childItem->parentItem();
+
+    if (parentItem == m_rootItem)
+        return QModelIndex();
+
+    return createIndex(parentItem->row(), 0, parentItem);
+}
+
+int SceneModel::rowCount(const QModelIndex &parent) const
+{
+    OutlineItem *parentItem;
+    if (parent.column() > 0)
+        return 0;
+
+    if (!parent.isValid())
+        parentItem = m_rootItem;
+    else
+        parentItem = static_cast<OutlineItem*>(parent.internalPointer());
+
+    return parentItem->childCount();
+}
 
 void SceneModel::setUpdatesBlocked(bool blocked)
 {
-	if (!blocked) {
-		resetScenes();
-	}
-	m_updates = !blocked;
+    m_updatesBlocked = blocked;
+    if (!m_updatesBlocked) {
+        rebuildOutline();
+    }
 }
 
-//-----------------------------------------------------------------------------
-
-QVariant SceneModel::data(const QModelIndex& index, int role) const
+void SceneModel::scheduleRebuild()
 {
-	QVariant result;
-
-	if (index.row() < m_scenes.count()) {
-		Scene scene = m_scenes.at(index.row());
-
-		// Make sure the scene data is up-to-date
-		if (scene.outdated) {
-			scene.outdated = false;
-			scene.block_number = -1;
-
-			QStringList lines;
-			QTextBlock block = m_document->document()->begin();
-			while (block.isValid()) {
-				BlockStats* stats = static_cast<BlockStats*>(block.userData());
-				if (stats == scene.stats) {
-					scene.block_number = block.blockNumber();
-					lines += scene.text;
-				} else if (!lines.isEmpty()) {
-					if (stats && stats->isScene()) {
-						break;
-					} else {
-						QString line = block.text().trimmed();
-						if (!line.isEmpty()) {
-							lines += line;
-						}
-						if (lines.count() == 3) {
-							break;
-						}
-					}
-				}
-				block = block.next();
-			}
-			scene.display = lines.join(QLatin1String("\n")).trimmed();
-		}
-
-		if (role == Qt::DisplayRole) {
-			result = scene.display;
-		} else if (role == Qt::UserRole) {
-			result = scene.block_number;
-		} else if (role == Qt::TextAlignmentRole) {
-			result = int(Qt::AlignLeading | Qt::AlignTop);
-		}
-	}
-
-	return result;
+    if (!m_updatesBlocked) {
+        // Using a single shot timer to avoid rebuilding the model on every single character change
+        // which can be expensive for large documents.
+        QTimer::singleShot(100, this, &SceneModel::rebuildOutline);
+    }
 }
 
-//-----------------------------------------------------------------------------
-
-bool SceneModel::dropMimeData(const QMimeData* data, Qt::DropAction action, int row, int column, const QModelIndex& parent)
+void SceneModel::rebuildOutline()
 {
-	QString format = mimeTypes().first();
-	if (!data || !data->hasFormat(format) || (action != Qt::MoveAction) || (column > 0) || parent.isValid()) {
-		return false;
-	}
+    if (m_updatesBlocked) return;
 
-	// Decode list of scenes
-	QByteArray bytes = data->data(format);
-	QDataStream stream(&bytes, QIODevice::ReadOnly);
-	QList<int> scenes;
-	stream >> scenes;
-
-	moveScenes(scenes, row);
-
-	return true;
+    beginResetModel();
+    setupModelData();
+    endResetModel();
 }
 
-//-----------------------------------------------------------------------------
-
-Qt::ItemFlags SceneModel::flags(const QModelIndex& index) const
+void SceneModel::setupModelData()
 {
-	return QAbstractListModel::flags(index) | (!index.isValid() ? Qt::ItemIsDropEnabled : Qt::ItemIsDragEnabled);
+    delete m_rootItem;
+    m_rootItem = new OutlineItem(nullptr);
+
+    QList<OutlineItem*> parents;
+    parents << m_rootItem;
+
+    for (QTextBlock block = m_document->document()->begin(); block.isValid(); block = block.next()) {
+        int headingLevel = block.blockFormat().property(QTextFormat::UserProperty).toInt();
+
+        if (headingLevel > 0 && !block.text().isEmpty()) {
+            if (headingLevel > parents.last()->level) {
+                // Child of the current item. Nothing to do with `parents` list yet.
+            } else {
+                // Sibling or uncle. Pop until we find the parent.
+                while (headingLevel <= parents.last()->level && parents.size() > 1) {
+                    parents.pop_back();
+                }
+            }
+            
+            OutlineItem* parentItem = parents.last();
+            OutlineItem *item = new OutlineItem(parentItem);
+            item->level = headingLevel;
+            item->text = block.text();
+            item->block_number = block.blockNumber();
+            parentItem->appendChild(item);
+
+            parents.push_back(item);
+        }
+    }
 }
 
-//-----------------------------------------------------------------------------
-
-QMimeData* SceneModel::mimeData(const QModelIndexList& indexes) const
+QModelIndex SceneModel::findScene(const QTextCursor& cursor) const
 {
-	// Encode list of scenes
-	QByteArray bytes;
-	QDataStream stream(&bytes, QIODevice::WriteOnly);
-	QList<int> scenes;
-	for (const QModelIndex& index : indexes) {
-		scenes += index.row();
-	}
-	stream << scenes;
-
-	// Return mime data object containing list
-	QMimeData* data = new QMimeData();
-	data->setData(mimeTypes().first(), bytes);
-	return data;
+    QTextBlock currentBlock = cursor.block();
+    while(currentBlock.isValid()) {
+        int headingLevel = currentBlock.blockFormat().property(QTextFormat::UserProperty).toInt();
+        if (headingLevel > 0 && !currentBlock.text().isEmpty()) {
+            return findSceneRecursive(currentBlock, QModelIndex());
+        }
+        currentBlock = currentBlock.previous();
+    }
+    return QModelIndex();
 }
 
-//-----------------------------------------------------------------------------
-
-QStringList SceneModel::mimeTypes() const
+QModelIndex SceneModel::findSceneRecursive(const QTextBlock& block, const QModelIndex& parent) const
 {
-	return QStringList() << QLatin1String("application/x-fwscenelist");
+    for (int i = 0; i < rowCount(parent); ++i) {
+        QModelIndex index = this->index(i, 0, parent);
+        OutlineItem* item = getItem(index);
+        if (item && item->block_number == block.blockNumber()) {
+            return index;
+        }
+        if (rowCount(index) > 0) {
+            QModelIndex found = findSceneRecursive(block, index);
+            if (found.isValid()) {
+                return found;
+            }
+        }
+    }
+    return QModelIndex();
 }
 
-//-----------------------------------------------------------------------------
-
-int SceneModel::rowCount(const QModelIndex& parent) const
+OutlineItem* SceneModel::getItem(const QModelIndex &index) const
 {
-	return !parent.isValid() ? m_scenes.count() : 0;
+    if (index.isValid()) {
+        OutlineItem *item = static_cast<OutlineItem*>(index.internalPointer());
+        if (item) {
+            return item;
+        }
+    }
+    return m_rootItem;
 }
-
-//-----------------------------------------------------------------------------
-
-Qt::DropActions SceneModel::supportedDropActions() const
-{
-	return Qt::MoveAction;
-}
-
-//-----------------------------------------------------------------------------
-
-void SceneModel::setSceneDivider(const QString& divider)
-{
-	if (f_scene_divider == divider) {
-		return;
-	}
-
-	f_scene_divider = divider;
-	f_scene_divider.replace(QLatin1String("\\t"), QLatin1String("\t"));
-
-	for (SceneModel* model : f_scene_models) {
-		model->resetScenes();
-	}
-}
-
-//-----------------------------------------------------------------------------
-
-void SceneModel::selectScene()
-{
-	// Make sure scenes are up-to-date
-	if (m_updates == -1) {
-		resetScenes();
-	}
-
-	QTextCursor cursor = m_document->textCursor();
-	cursor.clearSelection();
-
-	// Select to first block of scene
-	cursor.movePosition(QTextCursor::StartOfBlock);
-	QTextBlock block = cursor.block();
-	while (block.isValid()) {
-		if (block.userData() && static_cast<BlockStats*>(block.userData())->isScene()) {
-			break;
-		}
-		block = block.previous();
-		cursor.movePosition(QTextCursor::StartOfBlock);
-		cursor.movePosition(QTextCursor::PreviousBlock);
-	}
-	cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
-
-	// Select to last block of scene
-	cursor.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor);
-	block = cursor.block();
-	while (block.isValid()) {
-		if (block.userData() && static_cast<BlockStats*>(block.userData())->isScene()) {
-			break;
-		}
-		block = block.next();
-		cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
-		cursor.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor);
-	}
-
-	m_document->setTextCursor(cursor);
-}
-
-//-----------------------------------------------------------------------------
-
-void SceneModel::invalidateScenes()
-{
-	int count = m_scenes.count();
-	if (count == 0) {
-		return;
-	}
-
-	for (int i = 0; i < count; ++i) {
-		m_scenes[i].outdated = true;
-	}
-	emit dataChanged(index(0), index(count - 1));
-}
-
-//-----------------------------------------------------------------------------
-
-void SceneModel::addScene(BlockStats* stats, const QTextBlock& block, const QString& text)
-{
-	// Find previous scene in document
-	BlockStats *before = 0, *check = 0;
-	QTextBlock previous = block.previous();
-	while (previous.isValid()) {
-		check = static_cast<BlockStats*>(previous.userData());
-		if (check && check->isScene()) {
-			before = check;
-			break;
-		}
-		previous = previous.previous();
-	}
-
-	// Find previous scene in list
-	int pos = findSceneByStats(before) + 1;
-
-	// Insert scene
-	beginInsertRows(QModelIndex(), pos, pos);
-	Scene scene = { stats, text, QString(), block.blockNumber(), true };
-	m_scenes.insert(pos, scene);
-	endInsertRows();
-
-	// Make sure to update values
-	invalidateScenes();
-}
-
-//-----------------------------------------------------------------------------
-
-int SceneModel::findSceneByStats(BlockStats* stats) const
-{
-	int pos = -1;
-	for (int i = m_scenes.count() - 1; i >= 0; --i) {
-		if (m_scenes.at(i).stats == stats) {
-			pos = i;
-			break;
-		}
-	}
-	return pos;
-}
-
-//-----------------------------------------------------------------------------
-
-void SceneModel::resetScenes()
-{
-	// Remove all current scenes
-	removeAllScenes();
-
-	// Check all blocks for new scenes
-	QList<Scene> scenes;
-	QTextBlock block = m_document->document()->begin();
-	while (block.isValid()) {
-		BlockStats* stats = static_cast<BlockStats*>(block.userData());
-		if (stats) {
-			// Check if block is a scene
-			QString text = block.text();
-			bool is_scene = !f_scene_divider.isEmpty() && text.startsWith(f_scene_divider);
-			stats->setScene(is_scene || (block.blockNumber() == 0));
-
-			// Add scene
-			if (stats->isScene()) {
-				text = is_scene ? text.mid(f_scene_divider.length()).trimmed() : text;
-				Scene scene = { stats, text, QString(), block.blockNumber(), true };
-				scenes += scene;
-			}
-		}
-		block = block.next();
-	}
-
-	// Add all found scenes
-	if (!scenes.isEmpty()) {
-		beginInsertRows(QModelIndex(), 0, scenes.count() - 1);
-		m_scenes = scenes;
-		endInsertRows();
-	}
-
-	// Remove out-of-date flag
-	if (m_updates == -1) {
-		m_updates = 0;
-	}
-}
-
-//-----------------------------------------------------------------------------
-
-void SceneModel::selectScene(const Scene& scene, QTextCursor& cursor) const
-{
-	// Select first block of scene
-	QTextBlock block = cursor.document()->findBlockByNumber(scene.block_number);
-	int position = block.position();
-	if (block.userData() != scene.stats) {
-		block = cursor.document()->begin();
-		while (block.isValid()) {
-			position = block.position();
-			if (block.userData() == scene.stats) {
-				break;
-			}
-			block = block.next();
-		}
-	}
-	cursor.setPosition(position);
-	cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
-
-	// Select to last block of scene
-	cursor.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor);
-	block = cursor.block();
-	while (block.isValid()) {
-		if ((block.userData() && static_cast<BlockStats*>(block.userData())->isScene())
-				|| block.text().startsWith(f_scene_divider)) {
-			break;
-		}
-		block = block.next();
-		cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
-		cursor.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor);
-	}
-}
-
-//-----------------------------------------------------------------------------
-
-void SceneModel::updateScene(BlockStats* stats, const QString& text)
-{
-	// Find scene containing stats
-	int pos = findSceneByStats(stats);
-	if (pos == -1) {
-		return;
-	}
-
-	// Modify scene
-	m_scenes[pos].text = text;
-	m_scenes[pos].outdated = true;
-	QModelIndex i = index(pos);
-	emit dataChanged(i, i);
-}
-
-//-----------------------------------------------------------------------------
-
-void SceneModel::updateScene(const QTextBlock& block)
-{
-	// Find first scene above block
-	BlockStats* stats = 0;
-	int count = 0;
-	QTextBlock check = block;
-	while (check.isValid()) {
-		stats = static_cast<BlockStats*>(check.userData());
-		if (stats && stats->isScene()) {
-			break;
-		}
-		++count;
-		if (count == 3) {
-			return;
-		}
-		check = check.previous();
-	}
-	if (!stats || !stats->isScene()) {
-		return;
-	}
-
-	// Find scene containing stats
-	int pos = findSceneByStats(stats);
-	if (pos == -1) {
-		return;
-	}
-
-	// Modify scene
-	m_scenes[pos].outdated = true;
-	QModelIndex i = index(pos);
-	emit dataChanged(i, i);
-}
-
-//-----------------------------------------------------------------------------

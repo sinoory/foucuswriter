@@ -1,6 +1,6 @@
 /***********************************************************************
  *
- * Copyright (C) 2009, 2010, 2012, 2013, 2014 Graeme Gott <graeme@gottcode.org>
+ * Copyright (C) 2009, 2010, 2012, 2013, 2014, 2024 Graeme Gott <graeme@gottcode.org>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,18 +21,15 @@
 #define BLOCK_STATS_H
 
 class DictionaryRef;
-class SceneModel;
 
 #include <QTextBlockUserData>
 
 class BlockStats : public QTextBlockUserData
 {
 public:
-	BlockStats(SceneModel* scene_model);
-	~BlockStats();
+	BlockStats();
 
 	bool isEmpty() const;
-	bool isScene() const;
 	int characterCount() const;
 	int letterCount() const;
 	int spaceCount() const;
@@ -49,7 +46,6 @@ public:
 
 	void checkSpelling(const QString& text, const DictionaryRef& dictionary);
 	void recheckSpelling();
-	void setScene(bool scene);
 	void update(const QString& text);
 
 private:
@@ -57,8 +53,6 @@ private:
 	int m_letters;
 	int m_spaces;
 	int m_words;
-	bool m_scene;
-	SceneModel* m_scene_model;
 	QVector<QStringRef> m_misspelled;
 	SpellCheckStatus m_checked;
 };
@@ -66,11 +60,6 @@ private:
 inline bool BlockStats::isEmpty() const
 {
 	return m_words == 0;
-}
-
-inline bool BlockStats::isScene() const
-{
-	return m_scene;
 }
 
 inline int BlockStats::characterCount() const
@@ -96,11 +85,6 @@ inline int BlockStats::wordCount() const
 inline QVector<QStringRef> BlockStats::misspelled() const
 {
 	return m_misspelled;
-}
-
-inline void BlockStats::setScene(bool scene)
-{
-	m_scene = scene;
 }
 
 inline BlockStats::SpellCheckStatus BlockStats::spellingStatus() const

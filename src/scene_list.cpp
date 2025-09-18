@@ -1,6 +1,6 @@
 /***********************************************************************
  *
- * Copyright (C) 2012, 2014, 2018, 2019 Graeme Gott <graeme@gottcode.org>
+ * Copyright (C) 2012, 2014, 2018, 2019, 2024 Graeme Gott <graeme@gottcode.org>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,56 +26,20 @@
 #include <QAction>
 #include <QApplication>
 #include <QGridLayout>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListView>
+#include <QTreeView>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QSettings>
 #include <QSortFilterProxyModel>
-#include <QStyledItemDelegate>
 #include <QTextBlock>
 #include <QTextEdit>
 #include <QToolButton>
 
 #include <algorithm>
 #include <cmath>
-
-//-----------------------------------------------------------------------------
-
-namespace
-{
-
-class SceneDelegate : public QStyledItemDelegate
-{
-public:
-	SceneDelegate(QObject* parent) :
-		QStyledItemDelegate(parent)
-	{
-	}
-
-	QSize sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const;
-};
-
-QSize SceneDelegate::sizeHint(const QStyleOptionViewItem& option, const QModelIndex& index) const
-{
-	QStyleOptionViewItem opt = option;
-	initStyleOption(&opt, index);
-	const QWidget* widget = opt.widget;
-	const QStyle* style = widget ? widget->style() : QApplication::style();
-
-	QSize size = style->sizeFromContents(QStyle::CT_ItemViewItem, &opt, QSize(), widget);
-#if !defined(Q_OS_MAC)
-	int margin = style->pixelMetric(QStyle::PM_FocusFrameVMargin, &opt, widget);
-#else
-	int margin = 0;
-#endif
-	int height = opt.fontMetrics.height() * 3;
-	size.setHeight(margin + height);
-	return size;
-}
-
-}
 
 //-----------------------------------------------------------------------------
 
@@ -90,19 +54,6 @@ SceneList::SceneList(QWidget* parent) :
 	setFrameStyle(QFrame::Panel | QFrame::Raised);
 	setAutoFillBackground(true);
 	setPalette(QApplication::palette());
-
-	// Create actions for moving scenes
-	QAction* action = new QAction(tr("Move Scenes Down"), this);
-	action->setShortcut(tr("Ctrl+Shift+Down"));
-	connect(action, &QAction::triggered, this, &SceneList::moveScenesDown);
-	addAction(action);
-	ActionManager::instance()->addAction("MoveScenesDown", action);
-
-	action = new QAction(tr("Move Scenes Up"), this);
-	action->setShortcut(tr("Ctrl+Shift+Up"));
-	connect(action, &QAction::triggered, this, &SceneList::moveScenesUp);
-	addAction(action);
-	ActionManager::instance()->addAction("MoveScenesUp", action);
 
 	// Create button to show scenes
 	m_show_button = new QToolButton(this);
@@ -119,7 +70,7 @@ SceneList::SceneList(QWidget* parent) :
 	connect(m_hide_button, &QToolButton::clicked, this, &SceneList::hideScenes);
 
 	// Create action for toggling scenes
-	m_toggle_action = new QAction(tr("Toggle Scene List"), this);
+	m_toggle_action = new QAction(tr("Toggle Outline"), this);
 	m_toggle_action->setShortcut(tr("Shift+F4"));
 	connect(m_toggle_action, &QAction::changed, this, &SceneList::updateShortcuts);
 	connect(m_toggle_action, &QAction::triggered, this, &SceneList::toggleScenes);
@@ -130,20 +81,16 @@ SceneList::SceneList(QWidget* parent) :
 	// Create scene view
 	m_filter_model = new QSortFilterProxyModel(this);
 	m_filter_model->setFilterCaseSensitivity(Qt::CaseInsensitive);
+    m_filter_model->setRecursiveFilteringEnabled(true);
 
-	m_scenes = new QListView(this);
+	m_scenes = new QTreeView(this);
 	m_scenes->setAlternatingRowColors(true);
-	m_scenes->setDragEnabled(true);
-	m_scenes->setDragDropMode(QAbstractItemView::InternalMove);
-	m_scenes->setDropIndicatorShown(true);
+	m_scenes->setDragDropMode(QAbstractItemView::NoDragDrop);
 	m_scenes->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-	m_scenes->setItemDelegate(new SceneDelegate(m_scenes));
-	m_scenes->setSelectionMode(QAbstractItemView::ExtendedSelection);
-	m_scenes->setUniformItemSizes(true);
+	m_scenes->setSelectionMode(QAbstractItemView::SingleSelection);
 	m_scenes->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-	m_scenes->setWordWrap(true);
-	m_scenes->viewport()->setAcceptDrops(true);
 	m_scenes->setModel(m_filter_model);
+    m_scenes->setHeaderHidden(true);
 	m_scenes->show();
 	setFocusProxy(m_scenes);
 	setFocusPolicy(Qt::StrongFocus);
@@ -157,7 +104,7 @@ SceneList::SceneList(QWidget* parent) :
 	m_resizer = new QFrame(this);
 	m_resizer->setCursor(Qt::SizeHorCursor);
 	m_resizer->setFrameStyle(QFrame::VLine | QFrame::Sunken);
-	m_resizer->setToolTip(tr("Resize scene list"));
+	m_resizer->setToolTip(tr("Resize outline"));
 
 	// Lay out widgets
 	QGridLayout* layout = new QGridLayout(this);
@@ -202,7 +149,6 @@ void SceneList::setDocument(Document* document)
 
 	m_document = document;
 	if (m_document && scenesVisible()) {
-		m_scenes->setDragDropMode(!m_document->text()->isReadOnly() ? QAbstractItemView::InternalMove : QAbstractItemView::NoDragDrop);
 		m_document->sceneModel()->setUpdatesBlocked(false);
 		connect(m_document->text(), &QTextEdit::cursorPositionChanged, this, &SceneList::selectCurrentScene);
 		selectCurrentScene();
@@ -255,7 +201,6 @@ void SceneList::showScenes()
 	setMaximumWidth(m_width);
 
 	if (m_document) {
-		m_scenes->setDragDropMode(!m_document->text()->isReadOnly() ? QAbstractItemView::InternalMove : QAbstractItemView::NoDragDrop);
 		m_document->sceneModel()->setUpdatesBlocked(false);
 		connect(m_document->text(), &QTextEdit::cursorPositionChanged, this, &SceneList::selectCurrentScene);
 		selectCurrentScene();
@@ -320,20 +265,6 @@ void SceneList::resizeEvent(QResizeEvent* event)
 
 //-----------------------------------------------------------------------------
 
-void SceneList::moveScenesDown()
-{
-	moveSelectedScenes(1);
-}
-
-//-----------------------------------------------------------------------------
-
-void SceneList::moveScenesUp()
-{
-	moveSelectedScenes(-1);
-}
-
-//-----------------------------------------------------------------------------
-
 void SceneList::sceneSelected(const QModelIndex& index)
 {
 	if (!m_document || !scenesVisible()) {
@@ -365,6 +296,7 @@ void SceneList::selectCurrentScene()
 		m_scenes->clearSelection();
 		m_scenes->setCurrentIndex(index);
 		m_scenes->scrollTo(index);
+        m_scenes->expand(index.parent());
 		m_scenes->selectionModel()->blockSignals(false);
 	}
 }
@@ -374,13 +306,6 @@ void SceneList::selectCurrentScene()
 void SceneList::setFilter(const QString& filter)
 {
 	m_filter_model->setFilterFixedString(filter);
-	if (filter.isEmpty()) {
-		m_scenes->setDragEnabled(true);
-		m_scenes->setSelectionMode(QAbstractItemView::ExtendedSelection);
-	} else {
-		m_scenes->setDragEnabled(false);
-		m_scenes->setSelectionMode(QAbstractItemView::SingleSelection);
-	}
 }
 
 //-----------------------------------------------------------------------------
@@ -400,35 +325,8 @@ void SceneList::updateShortcuts()
 {
 	QKeySequence shortcut = ActionManager::instance()->action("ToggleScenes")->shortcut();
 	m_toggle_action->setShortcut(shortcut);
-	m_show_button->setToolTip(tr("Show scene list (%1)").arg(shortcut.toString(QKeySequence::NativeText)));
-	m_hide_button->setToolTip(tr("Hide scene list (%1)").arg(shortcut.toString(QKeySequence::NativeText)));
-}
-
-//-----------------------------------------------------------------------------
-
-void SceneList::moveSelectedScenes(int movement)
-{
-	// Find scenes to move
-	QModelIndexList indexes = m_filter_model->mapSelectionToSource(m_scenes->selectionModel()->selection()).indexes();
-	if (indexes.isEmpty()) {
-		return;
-	}
-	QList<int> scenes;
-
-	// Find target row
-	int first_row = INT_MAX;
-	int last_row = 0;
-	int index_row = 0;
-	for (int i = 0, count = indexes.count(); i < count; ++i) {
-		index_row = indexes.at(i).row();
-		first_row = std::min(first_row, index_row);
-		last_row = std::max(last_row, index_row);
-		scenes.append(index_row);
-	}
-	int row = std::max(0, ((movement > 0) ? (last_row + 1) : first_row) + movement);
-
-	// Move scenes
-	m_document->sceneModel()->moveScenes(scenes, row);
+	m_show_button->setToolTip(tr("Show outline (%1)").arg(shortcut.toString(QKeySequence::NativeText)));
+	m_hide_button->setToolTip(tr("Hide outline (%1)").arg(shortcut.toString(QKeySequence::NativeText)));
 }
 
 //-----------------------------------------------------------------------------

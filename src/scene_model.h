@@ -1,6 +1,6 @@
 /***********************************************************************
  *
- * Copyright (C) 2012 Graeme Gott <graeme@gottcode.org>
+ * Copyright (C) 2012, 2024 Graeme Gott <graeme@gottcode.org>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,66 +20,71 @@
 #ifndef SCENE_MODEL_H
 #define SCENE_MODEL_H
 
-class BlockStats;
-
-#include <QAbstractListModel>
+#include <QAbstractItemModel>
 #include <QList>
+#include <QVariant>
+
 class QTextBlock;
 class QTextCursor;
 class QTextEdit;
 
-class SceneModel : public QAbstractListModel
+class OutlineItem
+{
+public:
+    explicit OutlineItem(OutlineItem *parent = nullptr);
+    ~OutlineItem();
+
+    void appendChild(OutlineItem *child);
+
+    OutlineItem *child(int row);
+    int childCount() const;
+    int row() const;
+    OutlineItem *parentItem();
+
+    int level = 0;
+    QString text;
+    int block_number = -1;
+
+private:
+    QList<OutlineItem*> m_childItems;
+    OutlineItem *m_parentItem;
+};
+
+
+class SceneModel : public QAbstractItemModel
 {
 	Q_OBJECT
-
-	struct Scene
-	{
-		BlockStats* stats;
-		QString text;
-		QString display;
-		int block_number;
-		bool outdated;
-	};
 
 public:
 	SceneModel(QTextEdit* document, QObject* parent = 0);
 	~SceneModel();
 
 	QModelIndex findScene(const QTextCursor& cursor) const;
-	void moveScenes(QList<int> scenes, int row);
-	void removeScene(BlockStats* stats);
-	void removeAllScenes();
-	void updateScene(BlockStats* stats, const QTextBlock& block);
 	void setUpdatesBlocked(bool blocked);
 
-	QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const;
-	bool dropMimeData(const QMimeData* data, Qt::DropAction action, int row, int column, const QModelIndex& parent);
-	Qt::ItemFlags flags(const QModelIndex& index) const;
-	QMimeData* mimeData(const QModelIndexList& indexes) const;
-	QStringList mimeTypes() const;
-	int rowCount(const QModelIndex& parent) const;
-	Qt::DropActions supportedDropActions() const;
-
-	static void setSceneDivider(const QString& divider);
+	QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
+	Qt::ItemFlags flags(const QModelIndex& index) const override;
+	QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
+	QModelIndex index(int row, int column, const QModelIndex& parent = QModelIndex()) const override;
+    QModelIndex parent(const QModelIndex& index) const override;
+	int rowCount(const QModelIndex& parent = QModelIndex()) const override;
+    int columnCount(const QModelIndex& parent = QModelIndex()) const override;
 
 public slots:
-	void selectScene();
+    void rebuildOutline();
 
 private slots:
-	void invalidateScenes();
+	void scheduleRebuild();
 
 private:
-	void addScene(BlockStats* stats, const QTextBlock& block, const QString& text);
-	int findSceneByStats(BlockStats* stats) const;
-	void resetScenes();
-	void selectScene(const Scene& scene, QTextCursor& cursor) const;
-	void updateScene(BlockStats* stats, const QString& text);
-	void updateScene(const QTextBlock& block);
+    void setupModelData();
+    OutlineItem *getItem(const QModelIndex &index) const;
+    QModelIndex findSceneRecursive(const QTextBlock& block, const QModelIndex& parent) const;
 
 private:
-	QList<Scene> m_scenes;
+    OutlineItem *m_rootItem;
 	QTextEdit* m_document;
-	int m_updates;
+	bool m_updatesBlocked;
 };
 
 #endif

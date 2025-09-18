@@ -86,8 +86,7 @@ public:
 	void setSingleQuotes(int quotes);
 	void setTypewriterSounds(bool sounds);
 
-	QString sceneDivider() const;
-	void setSceneDivider(const QString& divider);
+	
 
 	bool savePositions() const;
 	bool writeByteOrderMark() const;
@@ -151,7 +150,7 @@ private:
 	int m_single_quotes;
 	bool m_typewriter_sounds;
 
-	QString m_scene_divider;
+	
 
 	bool m_save_positions;
 	RangedString m_save_format;

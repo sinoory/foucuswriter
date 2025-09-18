@@ -412,8 +412,6 @@ Document::Document(const QString& filename, DailyProgress* daily_progress, QWidg
 
 Document::~Document()
 {
-	m_scene_model->removeAllScenes();
-
 	DocumentWatcher::instance()->removeWatch(this);
 	clearIndex();
 }
@@ -1286,7 +1284,7 @@ void Document::selectionChanged()
 {
 	m_selected_stats.clear();
 	if (m_text->textCursor().hasSelection()) {
-		BlockStats temp(0);
+		BlockStats temp;
 		QStringList selection = m_text->textCursor().selectedText().split(QChar::ParagraphSeparator, QString::SkipEmptyParts);
 		for (const QString& string : selection) {
 			temp.update(string);
@@ -1363,14 +1361,13 @@ void Document::updateWordCount(int position, int removed, int added)
 	for (QTextBlock i = begin; i != end; i = i.next()) {
 		stats = static_cast<BlockStats*>(i.userData());
 		if (!stats) {
-			stats = new BlockStats(m_scene_model);
+			stats = new BlockStats();
 			i.setUserData(stats);
 			m_cached_stats.clear();
 			update_spelling = true;
 		}
 		stats->update(i.text());
 		stats->recheckSpelling();
-		m_scene_model->updateScene(stats, i);
 	}
 	if (update_spelling) {
 		m_highlighter->updateSpelling();
@@ -1395,10 +1392,9 @@ void Document::calculateWordCount()
 		BlockStats* stats = 0;
 		for (QTextBlock i = m_text->document()->begin(); i != m_text->document()->end(); i = i.next()) {
 			if (!i.userData()) {
-				stats = new BlockStats(m_scene_model);
+				stats = new BlockStats();
 				i.setUserData(stats);
 				stats->update(i.text());
-				m_scene_model->updateScene(stats, i);
 			}
 			if (i.blockNumber() != m_cached_current_block) {
 				m_cached_stats.append(static_cast<BlockStats*>(i.userData()));

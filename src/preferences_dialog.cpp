@@ -156,7 +156,7 @@ PreferencesDialog::PreferencesDialog(DailyProgress* daily_progress, QWidget* par
 	m_single_quotes->setCurrentIndex(Preferences::instance().singleQuotes());
 	m_typewriter_sounds->setChecked(Preferences::instance().typewriterSounds());
 
-	m_scene_divider->setText(Preferences::instance().sceneDivider());
+	
 
 	m_save_positions->setChecked(Preferences::instance().savePositions());
 	m_save_format->setCurrentIndex(m_save_format->findData(Preferences::instance().saveFormat().value()));
@@ -282,7 +282,7 @@ void PreferencesDialog::accept()
 	Preferences::instance().setSingleQuotes(m_single_quotes->currentIndex());
 	Preferences::instance().setTypewriterSounds(m_typewriter_sounds->isChecked());
 
-	Preferences::instance().setSceneDivider(m_scene_divider->text());
+	
 
 	Preferences::instance().setSavePositions(m_save_positions->isChecked());
 	Preferences::instance().setWriteByteOrderMark(m_write_bom->isChecked());
@@ -709,15 +709,7 @@ QWidget* PreferencesDialog::initGeneralTab()
 	edit_layout->addLayout(quotes_layout);
 	edit_layout->addWidget(m_typewriter_sounds);
 
-	// Create section options
-	QGroupBox* scene_group = new QGroupBox(tr("Scenes"), tab);
-
-	m_scene_divider = new QLineEdit(scene_group);
-
-	QFormLayout* scene_layout = new QFormLayout(scene_group);
-	scene_layout->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
-	scene_layout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
-	scene_layout->addRow(tr("Divider:"), m_scene_divider);
+	
 
 	// Create save options
 	QGroupBox* save_group = new QGroupBox(tr("Saving"), tab);
@@ -758,7 +750,7 @@ QWidget* PreferencesDialog::initGeneralTab()
 	// Lay out general options
 	QVBoxLayout* layout = new QVBoxLayout(tab);
 	layout->addWidget(edit_group);
-	layout->addWidget(scene_group);
+	
 	layout->addWidget(save_group);
 	layout->addWidget(view_group);
 	layout->addStretch();

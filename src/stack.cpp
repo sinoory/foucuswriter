@@ -432,7 +432,7 @@ void Stack::selectAll()
 
 void Stack::selectScene()
 {
-	m_current_document->sceneModel()->selectScene();
+	//m_current_document->sceneModel()->selectScene();
 }
 
 //-----------------------------------------------------------------------------
