@@ -72,6 +72,7 @@ public:
 
 public slots:
     void rebuildOutline();
+	void setAutoUpdate(bool enabled);
 
 private slots:
 	void scheduleRebuild();
@@ -85,6 +86,7 @@ private:
     OutlineItem *m_rootItem;
 	QTextEdit* m_document;
 	bool m_updatesBlocked;
+	bool m_autoUpdateEnabled;
 };
 
 #endif

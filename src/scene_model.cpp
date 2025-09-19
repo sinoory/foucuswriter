@@ -75,7 +75,8 @@ OutlineItem *OutlineItem::parentItem()
 SceneModel::SceneModel(QTextEdit* document, QObject* parent) :
 	QAbstractItemModel(parent),
 	m_document(document),
-    m_updatesBlocked(false)
+    m_updatesBlocked(false),
+	m_autoUpdateEnabled(true)
 {
     m_rootItem = new OutlineItem(nullptr);
 	connect(m_document->document(), &QTextDocument::contentsChanged, this, &SceneModel::scheduleRebuild);
@@ -181,9 +182,14 @@ void SceneModel::setUpdatesBlocked(bool blocked)
     }
 }
 
+void SceneModel::setAutoUpdate(bool enabled)
+{
+	m_autoUpdateEnabled = enabled;
+}
+
 void SceneModel::scheduleRebuild()
 {
-    if (!m_updatesBlocked) {
+    if (!m_updatesBlocked && m_autoUpdateEnabled) {
         // Using a single shot timer to avoid rebuilding the model on every single character change
         // which can be expensive for large documents.
         QTimer::singleShot(100, this, &SceneModel::rebuildOutline);

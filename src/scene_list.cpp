@@ -34,6 +34,7 @@
 #include <QMouseEvent>
 #include <QSettings>
 #include <QSortFilterProxyModel>
+#include <QStack>
 #include <QTextBlock>
 #include <QTextEdit>
 #include <QToolButton>
@@ -46,6 +47,7 @@
 SceneList::SceneList(QWidget* parent) :
 	QFrame(parent),
 	m_document(0),
+    m_isInteractingWithView(false),
 	m_resizing(false)
 {
 	m_width = qBound(0, QSettings().value("SceneList/Width", (int)std::lround(3.5 * logicalDpiX())).toInt(), maximumWidth());
@@ -78,10 +80,17 @@ SceneList::SceneList(QWidget* parent) :
 	updateShortcuts();
 	parent->addAction(m_toggle_action);
 
+	QAction* refresh_action = new QAction(tr("Refresh Outline"), this);
+	refresh_action->setShortcut(tr("F5"));
+	connect(refresh_action, &QAction::triggered, this, &SceneList::refreshOutline);
+	addAction(refresh_action);
+
 	// Create scene view
 	m_filter_model = new QSortFilterProxyModel(this);
 	m_filter_model->setFilterCaseSensitivity(Qt::CaseInsensitive);
-    m_filter_model->setRecursiveFilteringEnabled(true);
+	m_filter_model->setRecursiveFilteringEnabled(true);
+	connect(m_filter_model, &QSortFilterProxyModel::modelAboutToBeReset, this, &SceneList::saveExpandedState);
+	connect(m_filter_model, &QSortFilterProxyModel::modelReset, this, &SceneList::restoreExpandedState);
 
 	m_scenes = new QTreeView(this);
 	m_scenes->setAlternatingRowColors(true);
@@ -90,6 +99,8 @@ SceneList::SceneList(QWidget* parent) :
 	m_scenes->setSelectionMode(QAbstractItemView::SingleSelection);
 	m_scenes->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
 	m_scenes->setModel(m_filter_model);
+	m_scenes->setExpandsOnDoubleClick(false);
+	connect(m_scenes, &QTreeView::doubleClicked, this, &SceneList::toggleExpansion);
     m_scenes->setHeaderHidden(true);
 	m_scenes->show();
 	setFocusProxy(m_scenes);
@@ -160,6 +171,7 @@ void SceneList::setDocument(Document* document)
 void SceneList::hideScenes()
 {
 	if (m_document) {
+		m_document->sceneModel()->setAutoUpdate(true);
 		disconnect(m_scenes->selectionModel(), &QItemSelectionModel::currentChanged, this, &SceneList::sceneSelected);
 		m_document->sceneModel()->setUpdatesBlocked(true);
 		disconnect(m_document->text(), &QTextEdit::cursorPositionChanged, this, &SceneList::selectCurrentScene);
@@ -201,6 +213,8 @@ void SceneList::showScenes()
 	setMaximumWidth(m_width);
 
 	if (m_document) {
+		m_document->sceneModel()->setAutoUpdate(false);
+		m_document->sceneModel()->rebuildOutline();
 		m_document->sceneModel()->setUpdatesBlocked(false);
 		connect(m_document->text(), &QTextEdit::cursorPositionChanged, this, &SceneList::selectCurrentScene);
 		selectCurrentScene();
@@ -272,12 +286,16 @@ void SceneList::sceneSelected(const QModelIndex& index)
 	}
 
 	if (index.isValid()) {
-		int block_number = index.data(Qt::UserRole).toInt();
+        m_isInteractingWithView = true;
+
+		int block_number = m_filter_model->mapToSource(index).data(Qt::UserRole).toInt();
 		QTextBlock block = m_document->text()->document()->findBlockByNumber(block_number);
 		QTextCursor cursor = m_document->text()->textCursor();
 		cursor.setPosition(block.position());
 		m_document->text()->setTextCursor(cursor);
 		m_document->centerCursor(true);
+
+        m_isInteractingWithView = false;
 	}
 }
 
@@ -285,6 +303,10 @@ void SceneList::sceneSelected(const QModelIndex& index)
 
 void SceneList::selectCurrentScene()
 {
+    if (m_isInteractingWithView) {
+        return;
+    }
+
 	if (!m_document || !scenesVisible()) {
 		return;
 	}
@@ -292,15 +314,14 @@ void SceneList::selectCurrentScene()
 	QModelIndex index = m_document->sceneModel()->findScene(m_document->text()->textCursor());
 	if (index.isValid()) {
 		index = m_filter_model->mapFromSource(index);
+
 		m_scenes->selectionModel()->blockSignals(true);
-		m_scenes->clearSelection();
 		m_scenes->setCurrentIndex(index);
-		m_scenes->scrollTo(index);
-        m_scenes->expand(index.parent());
 		m_scenes->selectionModel()->blockSignals(false);
+
+		m_scenes->scrollTo(index);
 	}
 }
-
 //-----------------------------------------------------------------------------
 
 void SceneList::setFilter(const QString& filter)
@@ -321,6 +342,15 @@ void SceneList::toggleScenes()
 
 //-----------------------------------------------------------------------------
 
+void SceneList::refreshOutline()
+{
+	if (m_document) {
+		m_document->sceneModel()->rebuildOutline();
+	}
+}
+
+//-----------------------------------------------------------------------------
+
 void SceneList::updateShortcuts()
 {
 	QKeySequence shortcut = ActionManager::instance()->action("ToggleScenes")->shortcut();
@@ -329,4 +359,56 @@ void SceneList::updateShortcuts()
 	m_hide_button->setToolTip(tr("Hide outline (%1)").arg(shortcut.toString(QKeySequence::NativeText)));
 }
 
+void SceneList::saveExpandedState()
+{
+    m_expandedBlockNumbers.clear();
+    QModelIndex parent;
+    QStack<QModelIndex> parents;
+    parents.push(parent);
+
+    while (!parents.isEmpty()) {
+        parent = parents.pop();
+        int rowCount = m_filter_model->rowCount(parent);
+        for (int i = 0; i < rowCount; ++i) {
+            QModelIndex index = m_filter_model->index(i, 0, parent);
+            if (m_scenes->isExpanded(index)) {
+                QModelIndex sourceIndex = m_filter_model->mapToSource(index);
+                m_expandedBlockNumbers.insert(sourceIndex.data(Qt::UserRole).toInt());
+            }
+            if (m_filter_model->hasChildren(index)) {
+                parents.push(index);
+            }
+        }
+    }
+}
+
+void SceneList::restoreExpandedState()
+{
+    QModelIndex parent;
+    QStack<QModelIndex> parents;
+    parents.push(parent);
+
+    while (!parents.isEmpty()) {
+        parent = parents.pop();
+        int rowCount = m_filter_model->rowCount(parent);
+        for (int i = 0; i < rowCount; ++i) {
+            QModelIndex index = m_filter_model->index(i, 0, parent);
+            QModelIndex sourceIndex = m_filter_model->mapToSource(index);
+            if (m_expandedBlockNumbers.contains(sourceIndex.data(Qt::UserRole).toInt())) {
+                m_scenes->expand(index);
+            }
+            if (m_filter_model->hasChildren(index)) {
+                parents.push(index);
+            }
+        }
+    }
+}
+
 //-----------------------------------------------------------------------------
+
+void SceneList::toggleExpansion(const QModelIndex& index)
+{
+	if (index.isValid()) {
+		m_scenes->setExpanded(index, !m_scenes->isExpanded(index));
+	}
+}

@@ -23,6 +23,8 @@
 class Document;
 
 #include <QFrame>
+#include <QList>
+#include <QSet>
 class QLineEdit;
 class QTreeView;
 class QModelIndex;
@@ -57,6 +59,10 @@ private slots:
 	void setFilter(const QString& filter);
 	void toggleScenes();
 	void updateShortcuts();
+	void saveExpandedState();
+	void restoreExpandedState();
+	void toggleExpansion(const QModelIndex& index);
+	void refreshOutline();
 
 private:
 	QAction* m_toggle_action;
@@ -68,9 +74,11 @@ private:
 	QSortFilterProxyModel* m_filter_model;
 	Document* m_document;
 
+	bool m_isInteractingWithView;
+	bool m_resizing;
 	int m_width;
 	QPoint m_mouse_current;
-	bool m_resizing;
+	QSet<int> m_expandedBlockNumbers;
 };
 
 #endif
