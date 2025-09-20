@@ -30,6 +30,8 @@ class QTreeView;
 class QModelIndex;
 class QSortFilterProxyModel;
 class QToolButton;
+class QMenu;
+class QAction;
 
 class SceneList : public QFrame
 {
@@ -63,6 +65,8 @@ private slots:
 	void restoreExpandedState();
 	void toggleExpansion(const QModelIndex& index);
 	void refreshOutline();
+	void onCustomContextMenu(const QPoint& point);
+	void cutSelectedScene();
 
 private:
 	QAction* m_toggle_action;
@@ -79,6 +83,8 @@ private:
 	int m_width;
 	QPoint m_mouse_current;
 	QSet<int> m_expandedBlockNumbers;
+	QMenu* m_contextMenu;
+	QAction* m_cutAction;
 };
 
 #endif

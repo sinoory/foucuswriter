@@ -29,6 +29,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QTreeView>
 #include <QMimeData>
 #include <QMouseEvent>
@@ -105,6 +106,13 @@ SceneList::SceneList(QWidget* parent) :
 	m_scenes->show();
 	setFocusProxy(m_scenes);
 	setFocusPolicy(Qt::StrongFocus);
+
+	m_scenes->setContextMenuPolicy(Qt::CustomContextMenu);
+	connect(m_scenes, &QTreeView::customContextMenuRequested, this, &SceneList::onCustomContextMenu);
+
+	m_contextMenu = new QMenu(this);
+	m_cutAction = m_contextMenu->addAction(tr("Cut"));
+	connect(m_cutAction, &QAction::triggered, this, &SceneList::cutSelectedScene);
 
 	// Create filter widget
 	m_filter = new QLineEdit(this);
@@ -410,5 +418,30 @@ void SceneList::toggleExpansion(const QModelIndex& index)
 {
 	if (index.isValid()) {
 		m_scenes->setExpanded(index, !m_scenes->isExpanded(index));
+	}
+}
+
+//-----------------------------------------------------------------------------
+
+void SceneList::onCustomContextMenu(const QPoint& point)
+{
+	QModelIndex index = m_scenes->indexAt(point);
+	if (index.isValid()) {
+		m_contextMenu->exec(m_scenes->viewport()->mapToGlobal(point));
+	}
+}
+
+//-----------------------------------------------------------------------------
+
+void SceneList::cutSelectedScene()
+{
+	QModelIndex index = m_scenes->currentIndex();
+	if (!index.isValid()) {
+		return;
+	}
+
+	if (m_document) {
+		SceneModel* model = m_document->sceneModel();
+		model->cut(m_filter_model->mapToSource(index));
 	}
 }

@@ -22,6 +22,7 @@
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextEdit>
+#include <QTextDocumentFragment>
 #include <QTimer>
 
 //-----------------------------------------------------------------------------
@@ -278,4 +279,84 @@ OutlineItem* SceneModel::getItem(const QModelIndex &index) const
         }
     }
     return m_rootItem;
+}
+
+OutlineItem* SceneModel::findNextItemInOutline(OutlineItem* item) const
+{
+    if (!item) return nullptr;
+
+    OutlineItem* current = item;
+    OutlineItem* parent = current->parentItem();
+
+    while (parent) {
+        int nextRow = current->row() + 1;
+        if (nextRow < parent->childCount()) {
+            return parent->child(nextRow); // Found next sibling
+        }
+        // No next sibling, move up the tree
+        current = parent;
+        parent = current->parentItem();
+    }
+
+    return nullptr; // No next item found in the entire tree
+}
+
+#include <QDebug>
+
+void SceneModel::cut(const QModelIndex& index)
+{
+    if (!index.isValid()) {
+        return;
+    }
+
+    OutlineItem* item = getItem(index);
+    if (!item || item == m_rootItem) {
+        return;
+    }
+
+    // 1. Find text range
+    QTextBlock startBlock = m_document->document()->findBlockByNumber(item->block_number);
+    if (!startBlock.isValid()) {
+        return;
+    }
+
+    int startPos = startBlock.position();
+    int endPos = -1;
+
+    OutlineItem* nextItem = findNextItemInOutline(item);
+    if (nextItem) {
+        QTextBlock nextBlock = m_document->document()->findBlockByNumber(nextItem->block_number);
+        if (nextBlock.isValid()) {
+            endPos = nextBlock.position();
+        }
+    }
+
+    if (endPos == -1) {
+        // No next item, so cut to the end of the document
+        endPos = m_document->document()->characterCount() - 1;
+    }
+
+    qDebug() << "Cutting from" << startPos << "to" << endPos;
+
+    // 2. Store data for pasting
+    m_cutNodes.clear();
+    m_cutHtml.clear();
+    populateCutNodes(item);
+
+    QTextCursor cursor(m_document->document());
+    cursor.setPosition(startPos);
+    cursor.setPosition(endPos, QTextCursor::KeepAnchor);
+    m_cutHtml = cursor.selection().toHtml();
+
+    // 3. Remove text (this will trigger rebuild)
+    cursor.removeSelectedText();
+}
+
+void SceneModel::populateCutNodes(OutlineItem* item)
+{
+    if (!item) return;
+    m_cutNodes.append({item->text, item->level});
+    foreach (OutlineItem* child, item->children()) {
+        populateCutNodes(child);
+    }
 }

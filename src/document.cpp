@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- ***********************************************************************/
+ ************************************************************************/
 
 #include "document.h"
 
@@ -41,30 +41,35 @@
 #include "spell_checker.h"
 #include "theme.h"
 #include "window.h"
-
+#include <QAbstractSlider>
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>
 #include <QBuffer>
-#include <QDir>
-#include <QFile>
 #include <QFileDialog>
 #include <QGridLayout>
 #include <QMessageBox>
 #include <QMimeData>
-#include <QMouseEvent>
 #include <QPainter>
 #include <QPrintDialog>
 #include <QPrinter>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSettings>
-#include <QStandardPaths>
 #include <QShortcut>
+#include <QStandardPaths>
 #include <QStyle>
-#include <QTextBlock>
-#include <QTextDocumentFragment>
 #include <QTextEdit>
 #include <QTimer>
+
+
+#include <QDateTime>
+#include <QDebug> // Added for debugging
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QTextDocumentFragment>
+#include <QTextStream>
+#include <QUrl>
 
 #include <algorithm>
 #include <ctime>
@@ -1459,7 +1464,7 @@ QString Document::getSaveFileName(const QString& title)
 
 		// Append file extension
 		QString type;
-		QRegExp exp("\\*(\\.\\w+)");
+		QRegExp exp("\*(\.\w+)");
 		bool append_extension = false;
 		QStringList types;
 		int index = selected.indexOf(QLatin1Char('(')) + 1;

@@ -39,6 +39,7 @@ public:
     OutlineItem *child(int row);
     int childCount() const;
     int row() const;
+    const QList<OutlineItem*>& children() const { return m_childItems; }
     OutlineItem *parentItem();
 
     int level = 0;
@@ -48,6 +49,12 @@ public:
 private:
     QList<OutlineItem*> m_childItems;
     OutlineItem *m_parentItem;
+};
+
+struct CutNode
+{
+    QString text;
+    int level;
 };
 
 
@@ -73,6 +80,7 @@ public:
 public slots:
     void rebuildOutline();
 	void setAutoUpdate(bool enabled);
+	void cut(const QModelIndex& index);
 
 private slots:
 	void scheduleRebuild();
@@ -81,12 +89,16 @@ private:
     void setupModelData();
     OutlineItem *getItem(const QModelIndex &index) const;
     QModelIndex findSceneRecursive(const QTextBlock& block, const QModelIndex& parent) const;
+    OutlineItem* findNextItemInOutline(OutlineItem* item) const;
+    void populateCutNodes(OutlineItem* item);
 
 private:
     OutlineItem *m_rootItem;
 	QTextEdit* m_document;
 	bool m_updatesBlocked;
 	bool m_autoUpdateEnabled;
+    QString m_cutHtml;
+    QList<CutNode> m_cutNodes;
 };
 
 #endif
