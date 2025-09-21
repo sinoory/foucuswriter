@@ -360,3 +360,153 @@ void SceneModel::populateCutNodes(OutlineItem* item)
         populateCutNodes(child);
     }
 }
+
+bool SceneModel::hasCutNodes() const
+{
+    return !m_cutNodes.isEmpty();
+}
+
+void SceneModel::pasteIn(const QModelIndex& index)
+{
+    if (!index.isValid() || m_cutNodes.isEmpty()) {
+        return;
+    }
+
+    OutlineItem* item = getItem(index);
+    if (!item || item == m_rootItem) {
+        return;
+    }
+
+    QTextBlock block = m_document->document()->findBlockByNumber(item->block_number);
+    if (!block.isValid()) {
+        return;
+    }
+
+    QTextCursor cursor(m_document->document());
+    cursor.setPosition(block.position() + block.length() -1);
+    cursor.insertText("\n");
+
+    int paste_pos = cursor.position();
+    QTextBlockFormat originalBlockFormat = cursor.blockFormat();
+
+    // Insert the HTML
+    cursor.insertHtml(m_cutHtml);
+    cursor.insertBlock(originalBlockFormat);
+
+    // Adjust levels
+    int levelAdjustment = (item->level + 1) - m_cutNodes.first().level;
+
+    cursor.setPosition(paste_pos);
+    QTextBlock firstPastedBlock = cursor.block();
+
+    for (const CutNode& node : m_cutNodes) {
+        if (firstPastedBlock.isValid()) {
+            QTextCursor blockCursor(firstPastedBlock);
+            QTextBlockFormat format = firstPastedBlock.blockFormat();
+            format.setProperty(QTextFormat::UserProperty, node.level + levelAdjustment);
+            blockCursor.setBlockFormat(format);
+            firstPastedBlock = firstPastedBlock.next();
+        }
+    }
+
+    m_cutNodes.clear();
+    m_cutHtml.clear();
+}
+
+void SceneModel::pasteAfter(const QModelIndex& index)
+{
+    if (!index.isValid() || m_cutNodes.isEmpty()) {
+        return;
+    }
+
+    OutlineItem* item = getItem(index);
+    if (!item || item == m_rootItem) {
+        return;
+    }
+
+    int endPos = -1;
+    OutlineItem* nextItem = findNextItemInOutline(item);
+    if (nextItem) {
+        QTextBlock nextBlock = m_document->document()->findBlockByNumber(nextItem->block_number);
+        if (nextBlock.isValid()) {
+            endPos = nextBlock.position();
+        }
+    }
+
+    if (endPos == -1) {
+        endPos = m_document->document()->characterCount() - 1;
+    }
+
+    QTextCursor cursor(m_document->document());
+    cursor.setPosition(endPos);
+    QTextBlockFormat originalBlockFormat = cursor.blockFormat();
+
+    // Insert the HTML
+    cursor.insertHtml(m_cutHtml);
+    cursor.insertBlock(originalBlockFormat);
+
+    // Adjust levels
+    int levelAdjustment = item->level - m_cutNodes.first().level;
+
+    cursor.setPosition(endPos);
+    QTextBlock firstPastedBlock = cursor.block();
+
+    for (const CutNode& node : m_cutNodes) {
+        if (firstPastedBlock.isValid()) {
+            QTextCursor blockCursor(firstPastedBlock);
+            QTextBlockFormat format = firstPastedBlock.blockFormat();
+            format.setProperty(QTextFormat::UserProperty, node.level + levelAdjustment);
+            blockCursor.setBlockFormat(format);
+            firstPastedBlock = firstPastedBlock.next();
+        }
+    }
+
+    m_cutNodes.clear();
+    m_cutHtml.clear();
+}
+
+void SceneModel::pasteBefore(const QModelIndex& index)
+{
+    if (!index.isValid() || m_cutNodes.isEmpty()) {
+        return;
+    }
+
+    OutlineItem* item = getItem(index);
+    if (!item || item == m_rootItem) {
+        return;
+    }
+
+    QTextBlock block = m_document->document()->findBlockByNumber(item->block_number);
+    if (!block.isValid()) {
+        return;
+    }
+
+    QTextCursor cursor(m_document->document());
+    cursor.setPosition(block.position());
+
+    QTextBlockFormat originalBlockFormat = cursor.blockFormat();
+
+    // Insert the HTML
+    cursor.insertHtml(m_cutHtml);
+    cursor.insertBlock(originalBlockFormat);
+
+    // Get the block where the insertion happened
+    cursor.setPosition(block.position());
+    QTextBlock firstPastedBlock = cursor.block();
+
+    // Adjust levels
+    int levelAdjustment = item->level - m_cutNodes.first().level;
+
+    for (const CutNode& node : m_cutNodes) {
+        if (firstPastedBlock.isValid()) {
+            QTextCursor blockCursor(firstPastedBlock);
+            QTextBlockFormat format = firstPastedBlock.blockFormat();
+            format.setProperty(QTextFormat::UserProperty, node.level + levelAdjustment);
+            blockCursor.setBlockFormat(format);
+            firstPastedBlock = firstPastedBlock.next();
+        }
+    }
+
+    m_cutNodes.clear();
+    m_cutHtml.clear();
+}

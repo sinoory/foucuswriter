@@ -114,6 +114,15 @@ SceneList::SceneList(QWidget* parent) :
 	m_cutAction = m_contextMenu->addAction(tr("Cut"));
 	connect(m_cutAction, &QAction::triggered, this, &SceneList::cutSelectedScene);
 
+	m_pasteInAction = m_contextMenu->addAction(tr("Paste In"));
+	connect(m_pasteInAction, &QAction::triggered, this, &SceneList::pasteInSelectedScene);
+
+	m_pasteAfterAction = m_contextMenu->addAction(tr("Paste After"));
+	connect(m_pasteAfterAction, &QAction::triggered, this, &SceneList::pasteAfterSelectedScene);
+
+	m_pasteBeforeAction = m_contextMenu->addAction(tr("Paste Before"));
+	connect(m_pasteBeforeAction, &QAction::triggered, this, &SceneList::pasteBeforeSelectedScene);
+
 	// Create filter widget
 	m_filter = new QLineEdit(this);
 	m_filter->setPlaceholderText(tr("Filter"));
@@ -427,6 +436,10 @@ void SceneList::onCustomContextMenu(const QPoint& point)
 {
 	QModelIndex index = m_scenes->indexAt(point);
 	if (index.isValid()) {
+		bool hasCutNodes = m_document->sceneModel()->hasCutNodes();
+		m_pasteInAction->setEnabled(hasCutNodes);
+		m_pasteAfterAction->setEnabled(hasCutNodes);
+		m_pasteBeforeAction->setEnabled(hasCutNodes);
 		m_contextMenu->exec(m_scenes->viewport()->mapToGlobal(point));
 	}
 }
@@ -443,5 +456,44 @@ void SceneList::cutSelectedScene()
 	if (m_document) {
 		SceneModel* model = m_document->sceneModel();
 		model->cut(m_filter_model->mapToSource(index));
+	}
+}
+
+void SceneList::pasteInSelectedScene()
+{
+	QModelIndex index = m_scenes->currentIndex();
+	if (!index.isValid()) {
+		return;
+	}
+
+	if (m_document) {
+		SceneModel* model = m_document->sceneModel();
+		model->pasteIn(m_filter_model->mapToSource(index));
+	}
+}
+
+void SceneList::pasteAfterSelectedScene()
+{
+	QModelIndex index = m_scenes->currentIndex();
+	if (!index.isValid()) {
+		return;
+	}
+
+	if (m_document) {
+		SceneModel* model = m_document->sceneModel();
+		model->pasteAfter(m_filter_model->mapToSource(index));
+	}
+}
+
+void SceneList::pasteBeforeSelectedScene()
+{
+	QModelIndex index = m_scenes->currentIndex();
+	if (!index.isValid()) {
+		return;
+	}
+
+	if (m_document) {
+		SceneModel* model = m_document->sceneModel();
+		model->pasteBefore(m_filter_model->mapToSource(index));
 	}
 }

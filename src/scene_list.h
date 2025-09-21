@@ -67,6 +67,9 @@ private slots:
 	void refreshOutline();
 	void onCustomContextMenu(const QPoint& point);
 	void cutSelectedScene();
+	void pasteInSelectedScene();
+	void pasteAfterSelectedScene();
+	void pasteBeforeSelectedScene();
 
 private:
 	QAction* m_toggle_action;
@@ -85,6 +88,9 @@ private:
 	QSet<int> m_expandedBlockNumbers;
 	QMenu* m_contextMenu;
 	QAction* m_cutAction;
+	QAction* m_pasteInAction;
+	QAction* m_pasteAfterAction;
+	QAction* m_pasteBeforeAction;
 };
 
 #endif
